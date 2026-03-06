@@ -10,6 +10,9 @@ class RouteNode {
     this.isParam = segment.startsWith(":");
     this.paramName = this.isParam ? segment.slice(1) : null;
     this.component = null;
+    this.loadComponent = null; // Phase 9.2 Lazy Loader
+    this.guard = null; // Phase 9.2 Explicit synchronous abort mechanism
+    this.prefetch = false;
     this.isLayout = false; // Strictly differentiates layout parents vs leaf matches
     // Static children map for O(1) segment lookups
     this.staticChildren = new Map();
@@ -105,8 +108,29 @@ export class Router {
       }
     }
 
-    // Assign component to leaf
+    // Validate Configuration
+    if (routeDef.component && routeDef.loadComponent) {
+      throw new Error(
+        `Orbis Router: Route '${currentPath}' cannot define both 'component' and 'loadComponent'.`,
+      );
+    }
+
+    // Assign hooks explicitly
     currentNode.component = routeDef.component;
+    currentNode.loadComponent = routeDef.loadComponent;
+    currentNode.guard = routeDef.guard;
+    currentNode.prefetch = routeDef.prefetch;
+
+    // Dispatch background module prefetch immediately disconnected from resolving threads
+    if (
+      currentNode.prefetch &&
+      typeof currentNode.loadComponent === "function"
+    ) {
+      // Intentionally un-awaited detached Promise resolution warming native module cache
+      currentNode
+        .loadComponent()
+        .catch((err) => console.warn(`Orbis Router Prefetch Failed:`, err));
+    }
 
     // Process children recursively
     if (routeDef.children && routeDef.children.length > 0) {
@@ -122,7 +146,7 @@ export class Router {
    * @param {string} path - The destination root URL
    * @param {Object} options - Navigation context options (e.g. { query: { param: 'val' }})
    */
-  navigate(path, options = {}) {
+  async navigate(path, options = {}) {
     let fullUrl = path;
 
     // Explicitly deterministic string serialization
@@ -143,7 +167,7 @@ export class Router {
       return; // hashchange listener triggers resolve recursively
     }
 
-    this.resolve(fullUrl);
+    await this.resolve(fullUrl);
   }
 
   /**
@@ -187,9 +211,10 @@ export class Router {
   /**
    * Resolves a URL path into a Stack of Components + extracted Params, Query, and Hash.
    * Dispatches deterministic lifecycle events strictly synchronous.
+   * Runs guard pipeline and dynamic imports explicitly before modifying DOM.
    * @param {string} fullPath - URL pathname including query string
    */
-  resolve(fullPath) {
+  async resolve(fullPath) {
     const parsed = this._parseUrl(fullPath);
     const segments = parsed.path.split("/").filter((s) => s.length > 0);
 
@@ -206,54 +231,81 @@ export class Router {
     this._emit("beforeNavigation", result);
 
     let currentNode = this.rootNode;
+    const matchedNodes = [];
 
     // If path is purely root "/"
     if (segments.length === 0) {
-      if (currentNode.component) {
-        result.componentStack.push(currentNode.component);
+      if (currentNode.component || currentNode.loadComponent) {
+        matchedNodes.push(currentNode);
       }
-      this.currentPath = parsed.path;
+    } else {
+      // Resolve O(depth) explicit tree path
+      for (let i = 0; i < segments.length; i++) {
+        const segment = segments[i];
+        const isLastSegment = i === segments.length - 1;
 
-      // 2. SYNC EMIT: routeMatched
-      this._emit("routeMatched", result);
+        if (currentNode.staticChildren.has(segment)) {
+          currentNode = currentNode.staticChildren.get(segment);
+        } else if (currentNode.dynamicChild) {
+          currentNode = currentNode.dynamicChild;
+          result.params[currentNode.paramName] = segment;
+        } else {
+          throw new Error(
+            `Orbis Router: No route matched for path '${parsed.path}'.`,
+          );
+        }
 
-      this._diffAndRender(result);
-
-      // 4. SYNC EMIT: afterNavigation
-      this._emit("afterNavigation", result);
-      return result;
+        if (
+          (currentNode.component || currentNode.loadComponent) &&
+          (currentNode.isLayout || isLastSegment)
+        ) {
+          matchedNodes.push(currentNode);
+        }
+      }
     }
 
-    // Resolve O(depth) explicit tree path
-    for (let i = 0; i < segments.length; i++) {
-      const segment = segments[i];
-      const isLastSegment = i === segments.length - 1;
+    // 2. RUN GUARDS (Synchronous Pipeline)
+    for (const node of matchedNodes) {
+      if (typeof node.guard === "function") {
+        // Freeze context explicitly so guards cannot mutate layout logic
+        const guardResult = node.guard(
+          Object.freeze(Object.assign({}, result)),
+        );
+        if (guardResult === false) {
+          return; // Abort resolution silently without altering the preexisting DOM explicitly
+        }
+      }
+    }
 
-      if (currentNode.staticChildren.has(segment)) {
-        currentNode = currentNode.staticChildren.get(segment);
-      } else if (currentNode.dynamicChild) {
-        currentNode = currentNode.dynamicChild;
-        result.params[currentNode.paramName] = segment;
+    // 3. LOAD LAZY COMPONENTS (Async Pipeline)
+    for (const node of matchedNodes) {
+      if (!node.component && typeof node.loadComponent === "function") {
+        const module = await node.loadComponent();
+        // Cache explicitly to avoid network overhead natively returning visits
+        node.component = module.default || module;
+      }
+
+      if (node.component) {
+        result.componentStack.push(node.component);
       } else {
         throw new Error(
-          `Orbis Router: No route matched for path '${parsed.path}'.`,
+          `Orbis Router: Failed to resolve component dynamically for node '${node.segment}'.`,
         );
-      }
-
-      if (currentNode.component && (currentNode.isLayout || isLastSegment)) {
-        result.componentStack.push(currentNode.component);
       }
     }
 
+    // Pipeline completed sequentially
     this.currentPath = parsed.path;
 
-    // 2. SYNC EMIT: routeMatched
+    // 4. SYNC EMIT: routeMatched
     this._emit("routeMatched", result);
 
+    // 5. DOM MUTATION
     this._diffAndRender(result);
 
-    // 4. SYNC EMIT: afterNavigation
+    // 6. SYNC EMIT: afterNavigation
     this._emit("afterNavigation", result);
+
     return result;
   }
 
@@ -296,22 +348,26 @@ export class Router {
     // 3. Construct and Mount novel nested components
     let parentNode = null;
 
-    // If we kept portions of the stack, the mounting parent is the slot inside the last preserved component
-    if (divergenceIndex > 0) {
-      const highestPreservedComponent = this.currentStack[divergenceIndex - 1];
-      parentNode =
-        highestPreservedComponent.shadowRoot.querySelector("router-slot");
+    // Only resolve a parent physical container if we possess net new children to securely append.
+    if (divergenceIndex < newStack.length) {
+      // If we kept portions of the stack, the mounting parent is the slot inside the last preserved component
+      if (divergenceIndex > 0) {
+        const highestPreservedComponent =
+          this.currentStack[divergenceIndex - 1];
+        parentNode =
+          highestPreservedComponent.shadowRoot.querySelector("router-slot");
 
-      if (!parentNode) {
-        throw new Error(
-          `Orbis Router: Expected <router-slot> in ${highestPreservedComponent.constructor.name}`,
-        );
-      }
-    } else {
-      // We are rebuilding from root body/app
-      parentNode = document.querySelector("#app");
-      if (parentNode) {
-        parentNode.innerHTML = ""; // Clear root
+        if (!parentNode) {
+          throw new Error(
+            `Orbis Router: Expected <router-slot> in ${highestPreservedComponent.constructor.name}`,
+          );
+        }
+      } else {
+        // We are rebuilding from root body/app
+        parentNode = document.querySelector("#app");
+        if (parentNode) {
+          parentNode.innerHTML = ""; // Clear root
+        }
       }
     }
 
