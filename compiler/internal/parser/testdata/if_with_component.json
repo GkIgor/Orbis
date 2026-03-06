@@ -1,0 +1,35 @@
+[
+  {
+    "type": "If",
+    "node": {
+      "condition": "app.visible",
+      "children": [
+        {
+          "name": "CounterItem",
+          "eventBindings": [
+            {
+              "event": "click",
+              "handler": "select(i)",
+              "location": {
+                "file": "test.html",
+                "line": 1,
+                "column": 42
+              }
+            }
+          ],
+          "location": {
+            "file": "test.html",
+            "line": 1,
+            "column": 29
+          },
+          "selfClosing": true
+        }
+      ],
+      "location": {
+        "file": "test.html",
+        "line": 1,
+        "column": 1
+      }
+    }
+  }
+]

@@ -1,0 +1,158 @@
+[
+  {
+    "type": "Element",
+    "node": {
+      "tag": "div",
+      "attributes": [
+        {
+          "name": "class",
+          "value": "p-6 bg-gray-100 container",
+          "location": {
+            "file": "test.html",
+            "line": 1,
+            "column": 6
+          }
+        }
+      ],
+      "children": [
+        {
+          "tag": "h1",
+          "attributes": [
+            {
+              "name": "class",
+              "value": "title",
+              "location": {
+                "file": "test.html",
+                "line": 2,
+                "column": 7
+              }
+            }
+          ],
+          "children": [
+            {
+              "expression": "config.title",
+              "location": {
+                "file": "test.html",
+                "line": 2,
+                "column": 21
+              }
+            }
+          ],
+          "location": {
+            "file": "test.html",
+            "line": 2,
+            "column": 3
+          }
+        },
+        {
+          "tag": "button",
+          "attributes": [
+            {
+              "name": "class",
+              "value": "btn",
+              "location": {
+                "file": "test.html",
+                "line": 3,
+                "column": 11
+              }
+            }
+          ],
+          "eventBindings": [
+            {
+              "event": "click",
+              "handler": "toggle()",
+              "location": {
+                "file": "test.html",
+                "line": 3,
+                "column": 23
+              }
+            }
+          ],
+          "children": [
+            {
+              "content": "Toggle List",
+              "location": {
+                "file": "test.html",
+                "line": 3,
+                "column": 42
+              }
+            }
+          ],
+          "location": {
+            "file": "test.html",
+            "line": 3,
+            "column": 3
+          }
+        },
+        {
+          "condition": "app.visible",
+          "children": [
+            {
+              "tag": "div",
+              "attributes": [
+                {
+                  "name": "class",
+                  "value": "mt-4",
+                  "location": {
+                    "file": "test.html",
+                    "line": 5,
+                    "column": 10
+                  }
+                }
+              ],
+              "children": [
+                {
+                  "iterator": "item",
+                  "collection": "app.items",
+                  "index": "i",
+                  "children": [
+                    {
+                      "name": "CounterItem",
+                      "eventBindings": [
+                        {
+                          "event": "click",
+                          "handler": "select(i)",
+                          "location": {
+                            "file": "test.html",
+                            "line": 7,
+                            "column": 22
+                          }
+                        }
+                      ],
+                      "location": {
+                        "file": "test.html",
+                        "line": 7,
+                        "column": 9
+                      },
+                      "selfClosing": true
+                    }
+                  ],
+                  "location": {
+                    "file": "test.html",
+                    "line": 6,
+                    "column": 7
+                  }
+                }
+              ],
+              "location": {
+                "file": "test.html",
+                "line": 5,
+                "column": 5
+              }
+            }
+          ],
+          "location": {
+            "file": "test.html",
+            "line": 4,
+            "column": 3
+          }
+        }
+      ],
+      "location": {
+        "file": "test.html",
+        "line": 1,
+        "column": 1
+      }
+    }
+  }
+]

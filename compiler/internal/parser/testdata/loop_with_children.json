@@ -1,0 +1,35 @@
+[
+  {
+    "type": "Loop",
+    "node": {
+      "iterator": "item",
+      "collection": "items",
+      "index": "i",
+      "children": [
+        {
+          "tag": "p",
+          "children": [
+            {
+              "expression": "item",
+              "location": {
+                "file": "test.html",
+                "line": 1,
+                "column": 40
+              }
+            }
+          ],
+          "location": {
+            "file": "test.html",
+            "line": 1,
+            "column": 37
+          }
+        }
+      ],
+      "location": {
+        "file": "test.html",
+        "line": 1,
+        "column": 1
+      }
+    }
+  }
+]

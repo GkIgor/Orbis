@@ -1,0 +1,24 @@
+[
+  {
+    "type": "Element",
+    "node": {
+      "tag": "div",
+      "attributes": [
+        {
+          "name": "class",
+          "value": "container",
+          "location": {
+            "file": "test.html",
+            "line": 1,
+            "column": 6
+          }
+        }
+      ],
+      "location": {
+        "file": "test.html",
+        "line": 1,
+        "column": 1
+      }
+    }
+  }
+]

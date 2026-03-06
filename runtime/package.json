@@ -1,0 +1,13 @@
+{
+  "name": "orbis-runtime",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Minimal deterministic runtime for Orbis components",
+  "main": "index.js",
+  "scripts": {
+    "test": "node runtime.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  }
+}
