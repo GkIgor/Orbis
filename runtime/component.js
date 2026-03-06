@@ -19,6 +19,7 @@ export class OrbisComponent extends HTMLElement {
     this.state = {};
     this.container = null; // Injected by DI later
     this.route = { params: {} }; // Injected by Router later
+    this.routeData = {};
 
     this.__children = [];
     this.__listeners = [];

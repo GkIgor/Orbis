@@ -12,6 +12,7 @@ class RouteNode {
     this.component = null;
     this.loadComponent = null; // Phase 9.2 Lazy Loader
     this.guard = null; // Phase 9.2 Explicit synchronous abort mechanism
+    this.resolve = null; // Phase 9.3 Deterministic Native Promise Resolver dictionary Map
     this.prefetch = false;
     this.isLayout = false; // Strictly differentiates layout parents vs leaf matches
     // Static children map for O(1) segment lookups
@@ -22,32 +23,42 @@ class RouteNode {
 }
 
 export class Router {
+  /**
+   * Defines determinism boundary for client-side routing logic
+   * @param {Object} container - The Dependency Injection singleton map
+   * @param {Object} options - Router Configuration Modes natively
+   */
   constructor(container, options = {}) {
     this.container = container;
-    this.mode = options.mode || "history"; // "history" or "hash"
     this.rootNode = new RouteNode("");
     this.currentStack = [];
     this.currentPath = null;
-    this._events = {
-      beforeNavigation: [],
-      routeMatched: [],
-      componentStackResolved: [],
-      afterNavigation: [],
+    this.mode = options.mode === "hash" ? "hash" : "history";
+    this.scrollRestoration = options.scrollRestoration || "none";
+    this._events = {};
+
+    // Explicit DevTools hooks decoupling internal lifecycle observations entirely securely
+    this.__devtools = {
+      emit: (event, payload) => {
+        // Disabled statically for production runtime boundaries natively
+        if (typeof window !== "undefined" && window.__ORBIS_DEVTOOLS__) {
+          window.__ORBIS_DEVTOOLS__(event, payload);
+        }
+      },
     };
 
-    // Bind explicit navigation events deterministically based on mode
-    if (this.mode === "history") {
-      window.addEventListener("popstate", () => {
-        this.resolve(
-          window.location.pathname +
-            window.location.search +
-            window.location.hash,
-        );
-      });
-    } else if (this.mode === "hash") {
+    if (this.mode === "hash") {
       window.addEventListener("hashchange", () => {
-        const hashPath = window.location.hash.slice(1) || "/";
-        this.resolve(hashPath);
+        const hash = window.location.hash;
+        // Preemptively map explicit Hash URL identical securely avoiding history loops
+        this.resolve(hash.slice(1) || "/");
+      });
+    } else {
+      window.addEventListener("popstate", (e) => {
+        this.resolve(window.location.pathname + window.location.search);
+        if (this.scrollRestoration === "restore" && e.state) {
+          window.scrollTo(e.state.scrollX || 0, e.state.scrollY || 0);
+        }
       });
     }
   }
@@ -58,6 +69,8 @@ export class Router {
   on(eventName, callback) {
     if (this._events[eventName]) {
       this._events[eventName].push(callback);
+    } else {
+      this._events[eventName] = [callback]; // Initialize array if not present
     }
   }
 
@@ -120,6 +133,7 @@ export class Router {
     currentNode.loadComponent = routeDef.loadComponent;
     currentNode.guard = routeDef.guard;
     currentNode.prefetch = routeDef.prefetch;
+    currentNode.resolve = routeDef.resolve; // Phase 9.3 assignment
 
     // Dispatch background module prefetch immediately disconnected from resolving threads
     if (
@@ -161,7 +175,18 @@ export class Router {
     if (this.currentPath === fullUrl) return;
 
     if (this.mode === "history") {
-      window.history.pushState({}, "", fullUrl);
+      // Inherit positional explicit offset cleanly during pushing explicitly mimicking DOM tracking natively securely
+      if (
+        this.scrollRestoration === "restore" &&
+        typeof window !== "undefined"
+      ) {
+        window.history.replaceState(
+          { scrollX: window.scrollX, scrollY: window.scrollY },
+          "",
+          window.location.pathname + window.location.search,
+        );
+      }
+      window.history.pushState({ scrollX: 0, scrollY: 0 }, "", fullUrl);
     } else if (this.mode === "hash") {
       window.location.hash = fullUrl;
       return; // hashchange listener triggers resolve recursively
@@ -225,6 +250,7 @@ export class Router {
       query: parsed.query,
       hash: parsed.hash,
       from: this.currentPath,
+      routeData: {}, // Phase 9.3 Merged synchronous map
     };
 
     // 1. SYNC EMIT: beforeNavigation
@@ -264,6 +290,11 @@ export class Router {
       }
     }
 
+    this.__devtools.emit(
+      "routeResolved",
+      Object.freeze(Object.assign({}, result)),
+    );
+
     // 2. RUN GUARDS (Synchronous Pipeline)
     for (const node of matchedNodes) {
       if (typeof node.guard === "function") {
@@ -272,17 +303,45 @@ export class Router {
           Object.freeze(Object.assign({}, result)),
         );
         if (guardResult === false) {
+          this._emit("navigationCancelled", result);
           return; // Abort resolution silently without altering the preexisting DOM explicitly
         }
       }
     }
 
-    // 3. LOAD LAZY COMPONENTS (Async Pipeline)
+    this.__devtools.emit(
+      "guardsExecuted",
+      Object.freeze(Object.assign({}, result)),
+    );
+
+    // 3. RUN RESOLVERS (Async Orchestrator explicitly awaiting native APIs)
+    for (const node of matchedNodes) {
+      if (node.resolve && typeof node.resolve === "object") {
+        const freezeCtx = Object.freeze(Object.assign({}, result));
+
+        for (const [key, fetcher] of Object.entries(node.resolve)) {
+          if (typeof fetcher === "function") {
+            try {
+              const fetchOutput = await fetcher(freezeCtx);
+              // Safely merge distinct retrieved values identically merging overrides securely deterministically
+              result.routeData[key] = fetchOutput;
+            } catch (error) {
+              console.error(`Orbis Router Resolver Error [${key}]:`, error);
+              this._emit("navigationCancelled", result);
+              return; // Halt securely isolating internal layout errors
+            }
+          }
+        }
+      }
+    }
+
+    // 4. LOAD LAZY COMPONENTS (Async Pipeline)
     for (const node of matchedNodes) {
       if (!node.component && typeof node.loadComponent === "function") {
         const module = await node.loadComponent();
         // Cache explicitly to avoid network overhead natively returning visits
         node.component = module.default || module;
+        this.__devtools.emit("componentLoaded", node.segment);
       }
 
       if (node.component) {
@@ -297,13 +356,24 @@ export class Router {
     // Pipeline completed sequentially
     this.currentPath = parsed.path;
 
-    // 4. SYNC EMIT: routeMatched
+    // 5. SYNC EMIT: routeMatched
     this._emit("routeMatched", result);
 
-    // 5. DOM MUTATION
+    // 6. DOM MUTATION
     this._diffAndRender(result);
 
-    // 6. SYNC EMIT: afterNavigation
+    this.__devtools.emit(
+      "componentRendered",
+      Object.freeze(Object.assign({}, result)),
+    );
+
+    // 7. SCROLL RESTORATION (Executing structural alignment rigidly)
+    if (this.scrollRestoration === "top" && typeof window !== "undefined") {
+      window.scrollTo(0, 0);
+    }
+    // "restore" behaves statically off popstate event binding inherently safely
+
+    // 8. SYNC EMIT: afterNavigation
     this._emit("afterNavigation", result);
 
     return result;
@@ -384,6 +454,9 @@ export class Router {
         query: Object.assign({}, query),
         hash,
       };
+
+      // Inject tightly resolved synchronous Promise array map securely
+      instance.routeData = Object.assign({}, routeResult.routeData);
 
       // Mount physically
       if (parentNode) {
