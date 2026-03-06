@@ -15,8 +15,11 @@
 export class OrbisComponent extends HTMLElement {
   constructor() {
     super();
-    this.attachShadow({ mode: "open" });
+    this.shadowRoot = this.attachShadow({ mode: "open" });
     this.state = {};
+    this.container = null; // Injected by DI later
+    this.route = { params: {} }; // Injected by Router later
+
     this.__children = [];
     this.__listeners = [];
     this.__mounted = false;
